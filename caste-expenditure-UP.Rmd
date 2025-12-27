@@ -1,0 +1,283 @@
+---
+title: "Caste-Based Household Expenditure Disparities in Uttar Pradesh"
+subtitle: "An Analysis of the ACCESS 2018 Survey Data"
+author: "Pranav Mehta"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    number_sections: yes
+    highlight: tango
+    theme: default
+    fig_caption: yes
+    df_print: tibble
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+    number_sections: yes
+urlcolor: blue
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Introduction
+
+This project examines caste-based disparities in household expenditure in Uttar Pradesh, India, using the ACCESS 2018 survey data. The analysis investigates whether historically marginalized caste groups ("Reserved" categories including Scheduled Castes, Scheduled Tribes, and Other Backward Classes) experience lower household expenditure compared to "General" caste households, and explores potential explanatory factors such as land ownership and educational attainment.
+
+This analysis was completed as part of the *Data Analysis for Policy Research using R* course at Columbia University, taught by Prof. Harold Stolper.
+
+# Data and Methods
+
+## Data Source
+
+The ACCESS (All India Survey on Consumer Payment Systems) 2018 survey provides household-level data on demographics, income sources, and expenditure patterns across Indian states. This analysis focuses on Uttar Pradesh, India's most populous state.
+
+## Loading and Preparing the Data
+
+```{r load-data}
+load("access2018.RData")
+library(tidyverse)
+library(DescTools)
+library(dplyr)
+```
+
+The raw dataset requires some preparation. I convert key categorical variables to factors and subset the data to focus on Uttar Pradesh.
+
+```{r data-prep}
+access2018 <- access2018 %>%
+  mutate(
+    gender.fac = as.factor(gender),
+    caste.fac = as.factor(caste),
+    incsource.fac = as.factor(incsource),
+    state.fac = as.factor(state),
+    education.fac = as.factor(education)
+  )
+
+access_UP <- access2018 %>%
+  filter(state.fac == "UTTAR PRADESH") %>%
+  select(-HHID, -date)
+```
+
+I also create a binary indicator for caste reservation status, grouping Scheduled Caste, Scheduled Tribe, and Other Backward Class households as "Reserved" and others as "General."
+
+```{r reserved-indicator}
+access_UP <- access_UP %>% 
+  mutate(reserved = factor(if_else(
+    caste.fac %in% c("Other Backward Class", "Scheduled Caste", "Scheduled Tribe"),
+    "Reserved", "General"
+  )))
+```
+
+# Sample Characteristics
+
+## Overview
+
+The Uttar Pradesh subsample contains `r nrow(access_UP)` household observations. Each row represents a household head or senior member interviewed in the survey.
+
+```{r sample-overview}
+nrow(access_UP)
+```
+
+## Gender Composition
+
+Women make up approximately one-third of respondents in Uttar Pradesh, which is notably higher than in Bihar (23.3%).
+
+```{r gender-composition}
+round(prop.table(table(access_UP$gender.fac)), 3)
+
+# Comparison with Bihar
+access_bihar <- access2018 %>%
+  filter(state == "BIHAR")
+round(prop.table(table(access_bihar$gender.fac)), 3)
+```
+
+## Caste Composition
+
+The sample is predominantly composed of Reserved caste households (76.4%), with General caste households comprising the remaining 23.6%.
+
+```{r caste-composition}
+table(access_UP$reserved)
+prop.table(table(access_UP$reserved))
+```
+
+## Age Distribution
+
+Respondent ages range from 18 to 98 years, with a mean age of approximately 43 years.
+
+```{r age-distribution}
+summary(access_UP$age)
+```
+
+## Representativeness
+
+Since ACCESS is a sample survey, its representativeness depends on the sampling frame, survey weights, and response rates. Without detailed information on the sampling design and weighting procedures, generalizations to all Indian households should be made with caution. The sample is likely representative of the surveyed states and target population rather than the entire country.
+
+# Expenditure Analysis
+
+## Distribution of Monthly Expenditure
+
+Monthly household expenditure in the sample ranges widely. The highest monthly expenditure recorded is Rs. 56,000.
+
+```{r expenditure-distribution}
+max_exp_obs <- access_UP %>% 
+  summarize(max_exp = max(month_exp)) 
+max_exp_obs
+
+mean_exp <- access_UP %>% 
+  summarize(mean_exp = mean(month_exp)) 
+mean_exp
+```
+
+The mean monthly expenditure is approximately Rs. 6,802. A total of `r access_UP %>% filter(month_exp > mean(month_exp)) %>% nrow()` individuals (about 37% of the sample) spend more than this average.
+
+```{r above-mean-spenders}
+access_UP %>%
+  filter(month_exp > mean(month_exp)) %>% 
+  nrow()
+```
+
+## Profile of High Spenders
+
+The top 10 monthly spenders in the sample show variation in age, gender, and caste:
+
+```{r top-spenders}
+access_UP %>%
+  arrange(desc(month_exp)) %>%
+  select(age, gender, caste, month_exp) %>%
+  head(n = 10)
+```
+
+# Caste-Based Expenditure Gaps
+
+## Overall Expenditure Gap
+
+General caste households have substantially higher mean monthly expenditures than Reserved caste households.
+
+```{r expenditure-by-caste}
+summary_stats_gen <- access_UP %>%
+  filter(reserved == "General") %>%  
+  summarize(
+    mean_exp = mean(month_exp),
+    min_exp = min(month_exp),
+    max_exp = max(month_exp)
+  )
+
+summary_stats_res <- access_UP %>% 
+  filter(reserved == "Reserved") %>%  
+  summarize(
+    mean_exp = mean(month_exp),
+    min_exp = min(month_exp),
+    max_exp = max(month_exp)
+  )
+
+summary_stats_gen
+summary_stats_res
+
+expenditure_gap <- summary_stats_gen$mean_exp - summary_stats_res$mean_exp
+expenditure_gap
+```
+
+The gap in mean monthly expenditure between General and Reserved caste households is **Rs. 1,385**.
+
+## Land Ownership and Caste
+
+Research suggests that General caste households own a disproportionate share of agricultural land in India (India Human Development Survey, 2020). I examine whether this pattern holds in Uttar Pradesh by analyzing landowners—defined as households whose primary income source is agriculture on their own land.
+
+```{r land-ownership}
+land_owners <- access_UP %>%
+  filter(incsource.fac == "Agriculture (own land)")
+
+tab_land_by_caste <- table(land_owners$reserved)
+tab_land_by_caste
+prop.table(tab_land_by_caste)
+```
+
+General caste households comprise 23.6% of the overall sample but represent 33.1% of landowning households. This over-representation suggests significant caste-based disparities in land ownership.
+
+## Does Land Ownership Explain the Expenditure Gap?
+
+Among landowning households, the caste-based expenditure gap persists but is smaller:
+
+```{r landowner-gap}
+stats_land <- land_owners %>%
+  group_by(reserved) %>%
+  summarise(mean_exp = mean(month_exp))
+
+stats_land
+
+landowner_gap <- stats_land$mean_exp[stats_land$reserved == "General"] -
+                 stats_land$mean_exp[stats_land$reserved == "Reserved"]
+landowner_gap
+```
+
+The expenditure gap among landowners is **Rs. 865**, compared to Rs. 1,385 in the overall sample. Land ownership explains part of the disparity but does not eliminate it.
+
+## Gender Differences Among Landowners
+
+The caste-based expenditure gap persists for both male and female landowners:
+
+```{r gender-landowner-gaps}
+# Male landowners
+stats_land_male <- land_owners %>%
+  filter(gender.fac == "Male") %>%
+  group_by(reserved) %>%
+  summarise(mean_exp = mean(month_exp))
+
+male_gap <- stats_land_male$mean_exp[stats_land_male$reserved == "General"] -
+            stats_land_male$mean_exp[stats_land_male$reserved == "Reserved"]
+
+# Female landowners
+stats_land_female <- land_owners %>%
+  filter(gender.fac == "Female") %>%
+  group_by(reserved) %>%
+  summarise(mean_exp = mean(month_exp))
+
+female_gap <- stats_land_female$mean_exp[stats_land_female$reserved == "General"] -
+              stats_land_female$mean_exp[stats_land_female$reserved == "Reserved"]
+
+cat("Male landowner gap: Rs.", round(male_gap), "\n")
+cat("Female landowner gap: Rs.", round(female_gap), "\n")
+```
+
+The gap is similar for both genders (Rs. 839 for males, Rs. 915 for females), indicating that the caste disparity is not driven by gender composition.
+
+## Does Education Explain the Gap?
+
+Among landowning households with at least a high school education (Grade 10 or above), the expenditure gap narrows further:
+
+```{r education-gap}
+hsplus_landowner_stats <- land_owners %>%
+  filter(education.fac %in% c("Grade 10", "Grade 12", "Graduate or above")) %>%
+  group_by(reserved) %>%
+  summarise(mean_exp = mean(month_exp, na.rm = TRUE))
+
+hsplus_landowner_stats
+
+hsplus_gap <- hsplus_landowner_stats$mean_exp[hsplus_landowner_stats$reserved == "General"] -
+              hsplus_landowner_stats$mean_exp[hsplus_landowner_stats$reserved == "Reserved"]
+hsplus_gap
+```
+
+The gap among educated landowners is **Rs. 473**, substantially smaller than the overall gap of Rs. 1,385 or the landowner gap of Rs. 865.
+
+# Conclusions
+
+This analysis reveals persistent caste-based disparities in household expenditure in Uttar Pradesh:
+
+1. **Overall gap**: General caste households spend Rs. 1,385 more per month on average than Reserved caste households.
+
+2. **Land ownership**: General caste households are over-represented among landowners (33% vs. their 24% population share). However, the expenditure gap persists even among landowners (Rs. 865).
+
+3. **Gender**: The caste-based gap is similar for both male and female landowners, suggesting gender does not drive the disparity.
+
+4. **Education**: Higher educational attainment substantially narrows the gap. Among educated landowners, the gap shrinks to Rs. 473—about one-third of the overall gap.
+
+These findings suggest that caste-based economic inequality in Uttar Pradesh operates through multiple channels, including differential access to land and education. While improving educational access for marginalized communities may help reduce disparities, the persistence of gaps even after controlling for land and education indicates that other structural factors likely contribute to caste-based inequality.
+
+---
+
+*Data source: ACCESS 2018 Survey*
