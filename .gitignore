@@ -1,4 +1,13 @@
-# data
+# Data files
 data/*.RData
 data/*.rds
 data_raw/
+
+# R artifacts
+.Rhistory
+.RData
+*.html
+*.pdf
+
+# macOS
+.DS_Store
