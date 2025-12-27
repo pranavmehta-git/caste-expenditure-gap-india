@@ -1,13 +1,35 @@
-# Data files
-data/*.RData
-data/*.rds
-data_raw/
-
-# R artifacts
+# R files
 .Rhistory
+.Rapp.history
 .RData
-*.html
-*.pdf
+.Ruserdata
 
-# macOS
+# R environment
+.Renviron
+
+# RStudio files
+.Rproj.user/
+*.Rproj
+
+# Knitted output (optional - uncomment if you want to track these)
+# *.html
+# *.pdf
+
+# Data files (not to be shared)
+*.RData
+*.rda
+*.rds
+
+# Temporary files
+*~
+\#*\#
+.\#*
+
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
